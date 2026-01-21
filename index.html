@@ -1,65 +1,112 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <title>mICO</title>
+<meta charset="UTF-8">
+<title>mIRC Firebase</title>
 
-    <!-- Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-    <style>
-        body {
-            background: #000;
-            color: #00ff00;
-            font-family: Consolas, monospace;
-        }
+<style>
+body {
+    margin: 0;
+    background: #000;
+    color: #00ff00;
+    font-family: Consolas, monospace;
+}
 
-        #chat {
-            width: 600px;
-            margin: 20px auto;
-            border: 1px solid #00ff00;
-            display: flex;
-            flex-direction: column;
-            height: 500px;
-        }
+#app {
+    display: flex;
+    height: 100vh;
+}
 
-        #msgs {
-            flex: 1;
-            padding: 10px;
-            overflow-y: auto;
-        }
+/* Sidebar */
+#servers {
+    width: 220px;
+    border-right: 1px solid #00ff00;
+    padding: 10px;
+}
 
-        #input {
-            display: flex;
-            border-top: 1px solid #00ff00;
-        }
+#servers h3 {
+    margin-top: 0;
+}
 
-        input {
-            background: #000;
-            color: #00ff00;
-            border: none;
-            padding: 8px;
-            outline: none;
-            font-family: Consolas, monospace;
-        }
+#servers button {
+    width: 100%;
+    background: #000;
+    color: #00ff00;
+    border: 1px solid #00ff00;
+    margin-bottom: 5px;
+    cursor: pointer;
+}
 
-        #nick { width: 120px; border-right: 1px solid #00ff00; }
-        #msg { flex: 1; }
-    </style>
+/* Chat */
+#chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+#chatHeader {
+    padding: 8px;
+    border-bottom: 1px solid #00ff00;
+}
+
+#msgs {
+    flex: 1;
+    padding: 10px;
+    overflow-y: auto;
+}
+
+#input {
+    display: flex;
+    border-top: 1px solid #00ff00;
+}
+
+input {
+    background: #000;
+    color: #00ff00;
+    border: none;
+    outline: none;
+    padding: 8px;
+    font-family: Consolas, monospace;
+}
+
+#nick {
+    width: 120px;
+    border-right: 1px solid #00ff00;
+}
+
+#msg {
+    flex: 1;
+}
+</style>
 </head>
 <body>
 
-<div id="chat">
-    <div id="msgs"></div>
-    <div id="input">
-        <input id="nick" placeholder="Nick">
-        <input id="msg" placeholder="Mensagem">
+<div id="app">
+    <!-- Servidores -->
+    <div id="servers">
+        <h3>Servidores</h3>
+        <div id="listaServidores"></div>
+        <hr>
+        <button onclick="criarServidor()">+ Criar Servidor</button>
+    </div>
+
+    <!-- Chat -->
+    <div id="chat">
+        <div id="chatHeader">Nenhum servidor conectado</div>
+        <div id="msgs"></div>
+        <div id="input">
+            <input id="nick" placeholder="Nick">
+            <input id="msg" placeholder="Mensagem">
+        </div>
     </div>
 </div>
 
 <script>
-    // 🔧 Configuração do Firebase (troque pelos seus dados)
+// 🔥 CONFIG FIREBASE (AJUSTE AQUI)
 const firebaseConfig = {
     apiKey: "AIzaSyC7LT9SoHNDu8KLxQ97Uax9olpAT0NdMZU",
     authDomain: "mico-d9a83.firebaseapp.com",
@@ -70,42 +117,92 @@ const firebaseConfig = {
     appId: "1:83824148800:web:adfa823352c15c61c93aa5"
 };
 
-    firebase.initializeApp(firebaseConfig);
 
-    const db = firebase.database();
-    const messagesRef = db.ref("chat/mensagens");
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-    const msgsDiv = document.getElementById("msgs");
-    const msgInput = document.getElementById("msg");
-    const nickInput = document.getElementById("nick");
+// ELEMENTOS
+const listaServidores = document.getElementById("listaServidores");
+const msgsDiv = document.getElementById("msgs");
+const msgInput = document.getElementById("msg");
+const nickInput = document.getElementById("nick");
+const chatHeader = document.getElementById("chatHeader");
 
-    function addMessage(text) {
-        const div = document.createElement("div");
-        div.textContent = text;
-        msgsDiv.appendChild(div);
-        msgsDiv.scrollTop = msgsDiv.scrollHeight;
+// VARIÁVEIS
+let servidorAtual = null;
+let mensagensRef = null;
+
+// LISTAR SERVIDORES
+db.ref("servidores").on("value", snap => {
+    listaServidores.innerHTML = "";
+    const dados = snap.val();
+    if (!dados) return;
+
+    for (let id in dados) {
+        const s = dados[id];
+        const btn = document.createElement("button");
+        btn.textContent = s.nome + (s.senha ? " 🔒" : "");
+        btn.onclick = () => entrarServidor(id, s);
+        listaServidores.appendChild(btn);
+    }
+});
+
+// ENTRAR NO SERVIDOR
+function entrarServidor(id, servidor) {
+    if (servidor.senha) {
+        const senha = prompt("Senha do servidor:");
+        if (btoa(senha) !== servidor.senha) {
+            alert("Senha incorreta");
+            return;
+        }
     }
 
-    // 🔴 Escuta mensagens em tempo real
-    messagesRef.limitToLast(100).on("child_added", snapshot => {
-        const m = snapshot.val();
-        addMessage(`[${m.hora}] <${m.nick}> ${m.texto}`);
+    servidorAtual = id;
+    chatHeader.textContent = "Servidor: " + servidor.nome;
+    msgsDiv.innerHTML = "";
+
+    if (mensagensRef) mensagensRef.off();
+
+    mensagensRef = db.ref("mensagens/" + id);
+    mensagensRef.limitToLast(100).on("child_added", snap => {
+        const m = snap.val();
+        addMsg(`[${m.hora}] <${m.nick}> ${m.texto}`);
     });
+}
 
-    msgInput.addEventListener("keydown", e => {
-        if (e.key === "Enter" && msgInput.value.trim() !== "") {
-            const nick = nickInput.value || "Anon";
-            const texto = msgInput.value;
+// CRIAR SERVIDOR
+function criarServidor() {
+    const nome = prompt("Nome do servidor:");
+    if (!nome) return;
 
-            messagesRef.push({
-                nick,
-                texto,
-                hora: new Date().toLocaleTimeString()
-            });
+    const senha = prompt("Senha (opcional):");
 
-            msgInput.value = "";
-        }
+    db.ref("servidores").push({
+        nome: nome,
+        senha: senha ? btoa(senha) : null,
+        criadoEm: Date.now()
     });
+}
+
+// ENVIAR MENSAGEM
+msgInput.addEventListener("keydown", e => {
+    if (e.key === "Enter" && servidorAtual && msgInput.value.trim()) {
+        db.ref("mensagens/" + servidorAtual).push({
+            nick: nickInput.value || "Anon",
+            texto: msgInput.value,
+            hora: new Date().toLocaleTimeString()
+        });
+        msgInput.value = "";
+    }
+});
+
+// ADD MSG
+function addMsg(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    msgsDiv.appendChild(div);
+    msgsDiv.scrollTop = msgsDiv.scrollHeight;
+}
 </script>
 
 </body>
