@@ -185,9 +185,9 @@ db.ref("servidores").on("value", async snap => {
 
     lista.forEach(item => {
         const btn = document.createElement("button");
-        btn.textContent =
-            `${item.servidor.nome} (${item.totalOnline})` +
-            (item.servidor.senha ? " 🔒" : "");
+	btn.textContent =
+    `${item.servidor.nome} (${item.totalOnline} online)` +
+    (item.servidor.senha ? " 🔒" : "");
 
         btn.onclick = () => entrarServidor(item.id, item.servidor);
         listaServidores.appendChild(btn);
