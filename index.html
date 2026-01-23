@@ -9,10 +9,22 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <style>
+:root {
+    --bg: #000;
+    --fg: #00ff00;
+    --border: #00ff00;
+}
+
+body.light {
+    --bg: #ffffff;
+    --fg: #111111;
+    --border: #cccccc;
+}
+
 body {
     margin: 0;
-    background: #000;
-    color: #00ff00;
+    background: var(--bg);
+    color: var(--fg);
     font-family: Consolas, monospace;
 }
 
@@ -24,7 +36,7 @@ body {
 /* Sidebar */
 #servers {
     width: 220px;
-    border-right: 1px solid #00ff00;
+    border-right: 1px solid var(--border);
     padding: 10px;
 }
 
@@ -34,9 +46,9 @@ body {
 
 #servers button {
     width: 100%;
-    background: #000;
-    color: #00ff00;
-    border: 1px solid #00ff00;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
     margin-bottom: 5px;
     cursor: pointer;
 }
@@ -50,7 +62,10 @@ body {
 
 #chatHeader {
     padding: 8px;
-    border-bottom: 1px solid #00ff00;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 #msgs {
@@ -61,12 +76,12 @@ body {
 
 #input {
     display: flex;
-    border-top: 1px solid #00ff00;
+    border-top: 1px solid var(--border);
 }
 
 input {
-    background: #000;
-    color: #00ff00;
+    background: var(--bg);
+    color: var(--fg);
     border: none;
     outline: none;
     padding: 8px;
@@ -75,14 +90,25 @@ input {
 
 #nick {
     width: 120px;
-    border-right: 1px solid #00ff00;
+    border-right: 1px solid var(--border);
 }
 
 #msg {
     flex: 1;
 }
+
+/* Botão tema */
+#toggleTheme {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--fg);
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 12px;
+}
 </style>
 </head>
+
 <body>
 
 <div id="app">
@@ -96,7 +122,10 @@ input {
 
     <!-- Chat -->
     <div id="chat">
-        <div id="chatHeader">Nenhum servidor conectado</div>
+        <div id="chatHeader">
+            <span id="chatTitle">Nenhum servidor conectado</span>
+            <button id="toggleTheme" title="Alternar tema">🌙</button>
+        </div>
         <div id="msgs"></div>
         <div id="input">
             <input id="nick" placeholder="Nick">
@@ -106,7 +135,7 @@ input {
 </div>
 
 <script>
-// 🔥 CONFIG FIREBASE (AJUSTE AQUI)
+// 🔥 CONFIG FIREBASE
 const firebaseConfig = {
     apiKey: "AIzaSyC7LT9SoHNDu8KLxQ97Uax9olpAT0NdMZU",
     authDomain: "mico-d9a83.firebaseapp.com",
@@ -117,7 +146,6 @@ const firebaseConfig = {
     appId: "1:83824148800:web:adfa823352c15c61c93aa5"
 };
 
-
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
@@ -126,25 +154,44 @@ const listaServidores = document.getElementById("listaServidores");
 const msgsDiv = document.getElementById("msgs");
 const msgInput = document.getElementById("msg");
 const nickInput = document.getElementById("nick");
-const chatHeader = document.getElementById("chatHeader");
+const chatTitle = document.getElementById("chatTitle");
 
 // VARIÁVEIS
 let servidorAtual = null;
 let mensagensRef = null;
+let nickTravado = false;
+const userId = Date.now().toString();
 
-// LISTAR SERVIDORES
-db.ref("servidores").on("value", snap => {
+// LISTAR SERVIDORES (ordenados por usuários online)
+db.ref("servidores").on("value", async snap => {
     listaServidores.innerHTML = "";
-    const dados = snap.val();
-    if (!dados) return;
+    const servidores = snap.val();
+    if (!servidores) return;
 
-    for (let id in dados) {
-        const s = dados[id];
-        const btn = document.createElement("button");
-        btn.textContent = s.nome + (s.senha ? " 🔒" : "");
-        btn.onclick = () => entrarServidor(id, s);
-        listaServidores.appendChild(btn);
+    const lista = [];
+
+    for (let id in servidores) {
+        const servidor = servidores[id];
+
+        const onlineSnap = await db.ref("usuariosOnline/" + id).once("value");
+        const totalOnline = onlineSnap.exists()
+            ? onlineSnap.numChildren()
+            : 0;
+
+        lista.push({ id, servidor, totalOnline });
     }
+
+    lista.sort((a, b) => b.totalOnline - a.totalOnline);
+
+    lista.forEach(item => {
+        const btn = document.createElement("button");
+        btn.textContent =
+            `${item.servidor.nome} (${item.totalOnline})` +
+            (item.servidor.senha ? " 🔒" : "");
+
+        btn.onclick = () => entrarServidor(item.id, item.servidor);
+        listaServidores.appendChild(btn);
+    });
 });
 
 // ENTRAR NO SERVIDOR
@@ -157,9 +204,19 @@ function entrarServidor(id, servidor) {
         }
     }
 
+    // remove usuário do servidor anterior
+    if (servidorAtual) {
+        db.ref(`usuariosOnline/${servidorAtual}/${userId}`).remove();
+    }
+
     servidorAtual = id;
-    chatHeader.textContent = "Servidor: " + servidor.nome;
+    chatTitle.textContent = "Servidor: " + servidor.nome;
     msgsDiv.innerHTML = "";
+
+    // registra usuário online
+    const userOnlineRef = db.ref(`usuariosOnline/${id}/${userId}`);
+    userOnlineRef.set({ nick: nickInput.value || "Anon" });
+    userOnlineRef.onDisconnect().remove();
 
     if (mensagensRef) mensagensRef.off();
 
@@ -168,6 +225,10 @@ function entrarServidor(id, servidor) {
         const m = snap.val();
         addMsg(`[${m.hora}] <${m.nick}> ${m.texto}`);
     });
+
+    // libera nick ao entrar
+    nickTravado = false;
+    nickInput.disabled = false;
 }
 
 // CRIAR SERVIDOR
@@ -187,11 +248,18 @@ function criarServidor() {
 // ENVIAR MENSAGEM
 msgInput.addEventListener("keydown", e => {
     if (e.key === "Enter" && servidorAtual && msgInput.value.trim()) {
+
+        if (!nickTravado) {
+            nickInput.disabled = true;
+            nickTravado = true;
+        }
+
         db.ref("mensagens/" + servidorAtual).push({
             nick: nickInput.value || "Anon",
             texto: msgInput.value,
-            hora: new Date().toLocaleTimeString()
+            hora: new Date().toLocaleString()
         });
+
         msgInput.value = "";
     }
 });
@@ -203,6 +271,21 @@ function addMsg(text) {
     msgsDiv.appendChild(div);
     msgsDiv.scrollTop = msgsDiv.scrollHeight;
 }
+
+// 🌗 TEMA
+const toggleThemeBtn = document.getElementById("toggleTheme");
+
+if (localStorage.getItem("theme") === "light") {
+    document.body.classList.add("light");
+    toggleThemeBtn.textContent = "☀️";
+}
+
+toggleThemeBtn.addEventListener("click", () => {
+    document.body.classList.toggle("light");
+    const isLight = document.body.classList.contains("light");
+    localStorage.setItem("theme", isLight ? "light" : "dark");
+    toggleThemeBtn.textContent = isLight ? "☀️" : "🌙";
+});
 </script>
 
 </body>
